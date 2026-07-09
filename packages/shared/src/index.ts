@@ -1,7 +1,9 @@
+export { agentAdapterTypeSchema, optionalAgentAdapterTypeSchema } from "./adapter-type.js";
 export {
   COMPANY_STATUSES,
   DEPLOYMENT_MODES,
   DEPLOYMENT_EXPOSURES,
+  BIND_MODES,
   AUTH_BASE_URL_MODES,
   AGENT_STATUSES,
   AGENT_ADAPTER_TYPES,
@@ -13,6 +15,11 @@ export {
   INBOX_MINE_ISSUE_STATUS_FILTER,
   ISSUE_PRIORITIES,
   ISSUE_ORIGIN_KINDS,
+  ISSUE_RELATION_TYPES,
+  ISSUE_EXECUTION_POLICY_MODES,
+  ISSUE_EXECUTION_STAGE_TYPES,
+  ISSUE_EXECUTION_STATE_STATUSES,
+  ISSUE_EXECUTION_DECISION_OUTCOMES,
   GOAL_LEVELS,
   GOAL_STATUSES,
   PROJECT_STATUSES,
@@ -21,6 +28,7 @@ export {
   ROUTINE_CATCH_UP_POLICIES,
   ROUTINE_TRIGGER_KINDS,
   ROUTINE_TRIGGER_SIGNING_MODES,
+  ROUTINE_VARIABLE_TYPES,
   ROUTINE_RUN_STATUSES,
   ROUTINE_RUN_SOURCES,
   PAUSE_REASONS,
@@ -72,6 +80,7 @@ export {
   type CompanyStatus,
   type DeploymentMode,
   type DeploymentExposure,
+  type BindMode,
   type AuthBaseUrlMode,
   type AgentStatus,
   type AgentAdapterType,
@@ -80,6 +89,11 @@ export {
   type IssueStatus,
   type IssuePriority,
   type IssueOriginKind,
+  type IssueRelationType,
+  type IssueExecutionPolicyMode,
+  type IssueExecutionStageType,
+  type IssueExecutionStateStatus,
+  type IssueExecutionDecisionOutcome,
   type GoalLevel,
   type GoalStatus,
   type ProjectStatus,
@@ -88,6 +102,7 @@ export {
   type RoutineCatchUpPolicy,
   type RoutineTriggerKind,
   type RoutineTriggerSigningMode,
+  type RoutineVariableType,
   type RoutineRunStatus,
   type RoutineRunSource,
   type PauseReason,
@@ -136,8 +151,28 @@ export {
   type PluginBridgeErrorCode,
 } from "./constants.js";
 
+export {
+  ALL_INTERFACES_BIND_HOST,
+  LOOPBACK_BIND_HOST,
+  inferBindModeFromHost,
+  isAllInterfacesHost,
+  isLoopbackHost,
+  resolveRuntimeBind,
+  validateConfiguredBindMode,
+} from "./network-bind.js";
+
 export type {
   Company,
+  FeedbackVote,
+  FeedbackDataSharingPreference,
+  FeedbackTargetType,
+  FeedbackVoteValue,
+  FeedbackTrace,
+  FeedbackTraceStatus,
+  FeedbackTraceTargetSummary,
+  FeedbackTraceBundleCaptureStatus,
+  FeedbackTraceBundleFile,
+  FeedbackTraceBundle,
   CompanySkillSourceType,
   CompanySkillTrustLevel,
   CompanySkillCompatibility,
@@ -166,6 +201,7 @@ export type {
   InstanceExperimentalSettings,
   InstanceGeneralSettings,
   InstanceSettings,
+  BackupRetentionPolicy,
   Agent,
   AgentAccessState,
   AgentChainOfCommandEntry,
@@ -188,6 +224,7 @@ export type {
   ProjectGoalRef,
   ProjectWorkspace,
   ExecutionWorkspace,
+  ExecutionWorkspaceSummary,
   ExecutionWorkspaceConfig,
   ExecutionWorkspaceCloseAction,
   ExecutionWorkspaceCloseActionKind,
@@ -196,7 +233,11 @@ export type {
   ExecutionWorkspaceCloseReadiness,
   ExecutionWorkspaceCloseReadinessState,
   ProjectWorkspaceRuntimeConfig,
+  WorkspaceCommandDefinition,
+  WorkspaceCommandKind,
+  WorkspaceRuntimeControlTarget,
   WorkspaceRuntimeService,
+  WorkspaceRuntimeServiceStateMap,
   WorkspaceOperation,
   WorkspaceOperationPhase,
   WorkspaceOperationStatus,
@@ -216,6 +257,14 @@ export type {
   IssueWorkProductReviewState,
   Issue,
   IssueAssigneeAdapterOverrides,
+  IssueRelation,
+  IssueRelationIssueSummary,
+  IssueExecutionPolicy,
+  IssueExecutionState,
+  IssueExecutionStage,
+  IssueExecutionStageParticipant,
+  IssueExecutionStagePrincipal,
+  IssueExecutionDecision,
   IssueComment,
   IssueDocument,
   IssueDocumentSummary,
@@ -245,6 +294,8 @@ export type {
   FinanceSummary,
   FinanceByBiller,
   FinanceByKind,
+  AgentWakeupResponse,
+  AgentWakeupSkipped,
   HeartbeatRun,
   HeartbeatRunEvent,
   AgentRuntimeState,
@@ -255,6 +306,8 @@ export type {
   DashboardSummary,
   ActivityEvent,
   SidebarBadges,
+  SidebarOrderPreference,
+  InboxDismissal,
   CompanyMembership,
   PrincipalPermissionGrant,
   Invite,
@@ -294,6 +347,8 @@ export type {
   CompanySecret,
   SecretProviderDescriptor,
   Routine,
+  RoutineVariable,
+  RoutineVariableDefaultValue,
   RoutineTrigger,
   RoutineRun,
   RoutineTriggerSecretMaterial,
@@ -326,6 +381,42 @@ export type {
 } from "./types/index.js";
 
 export {
+  sidebarOrderPreferenceSchema,
+  upsertSidebarOrderPreferenceSchema,
+  type UpsertSidebarOrderPreference,
+} from "./validators/sidebar-preferences.js";
+
+export { workspaceRuntimeControlTargetSchema } from "./validators/execution-workspace.js";
+export {
+  findWorkspaceCommandDefinition,
+  listWorkspaceCommandDefinitions,
+  listWorkspaceServiceCommandDefinitions,
+  matchWorkspaceRuntimeServiceToCommand,
+  scoreWorkspaceRuntimeServiceMatch,
+} from "./workspace-commands.js";
+
+export {
+  DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
+  FEEDBACK_TARGET_TYPES,
+  FEEDBACK_DATA_SHARING_PREFERENCES,
+  FEEDBACK_TRACE_STATUSES,
+  FEEDBACK_VOTE_VALUES,
+  DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION,
+} from "./types/feedback.js";
+
+export {
+  DAILY_RETENTION_PRESETS,
+  WEEKLY_RETENTION_PRESETS,
+  MONTHLY_RETENTION_PRESETS,
+  DEFAULT_BACKUP_RETENTION,
+} from "./types/instance.js";
+
+export {
+  getClosedIsolatedExecutionWorkspaceMessage,
+  isClosedIsolatedExecutionWorkspace,
+} from "./execution-workspace-guards.js";
+
+export {
   instanceGeneralSettingsSchema,
   patchInstanceGeneralSettingsSchema,
   type PatchInstanceGeneralSettings,
@@ -338,9 +429,14 @@ export {
   createCompanySchema,
   updateCompanySchema,
   updateCompanyBrandingSchema,
+  feedbackTargetTypeSchema,
+  feedbackTraceStatusSchema,
+  feedbackVoteValueSchema,
+  upsertIssueFeedbackVoteSchema,
   type CreateCompany,
   type UpdateCompany,
   type UpdateCompanyBranding,
+  type UpsertIssueFeedbackVote,
   agentSkillStateSchema,
   agentSkillSyncModeSchema,
   agentSkillEntrySchema,
@@ -385,6 +481,8 @@ export {
   createIssueSchema,
   createIssueLabelSchema,
   updateIssueSchema,
+  issueExecutionPolicySchema,
+  issueExecutionStateSchema,
   issueExecutionWorkspaceSettingsSchema,
   checkoutIssueSchema,
   addIssueCommentSchema,
@@ -449,6 +547,7 @@ export {
   updateRoutineSchema,
   createRoutineTriggerSchema,
   updateRoutineTriggerSchema,
+  routineVariableSchema,
   runRoutineSchema,
   rotateRoutineTriggerSecretSchema,
   type CreateSecret,
@@ -563,15 +662,31 @@ export { deriveProjectUrlKey, normalizeProjectUrlKey, hasNonAsciiContent } from 
 export {
   AGENT_MENTION_SCHEME,
   PROJECT_MENTION_SCHEME,
+  SKILL_MENTION_SCHEME,
   buildAgentMentionHref,
   buildProjectMentionHref,
+  buildSkillMentionHref,
   extractAgentMentionIds,
+  extractSkillMentionIds,
   parseAgentMentionHref,
   parseProjectMentionHref,
+  parseSkillMentionHref,
   extractProjectMentionIds,
   type ParsedAgentMention,
   type ParsedProjectMention,
+  type ParsedSkillMention,
 } from "./project-mentions.js";
+
+export {
+  BUILTIN_ROUTINE_VARIABLE_NAMES,
+  extractRoutineVariableNames,
+  getBuiltinRoutineVariableValues,
+  interpolateRoutineTemplate,
+  isBuiltinRoutineVariable,
+  isValidRoutineVariableName,
+  stringifyRoutineVariableValue,
+  syncRoutineVariablesWithTemplate,
+} from "./routine-variables.js";
 
 export {
   paperclipConfigSchema,
@@ -587,6 +702,8 @@ export {
   storageLocalDiskConfigSchema,
   storageS3ConfigSchema,
   secretsLocalEncryptedConfigSchema,
+  telemetryConfigSchema,
+  type TelemetryConfig,
   type PaperclipConfig,
   type LlmConfig,
   type DatabaseBackupConfig,
