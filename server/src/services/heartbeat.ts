@@ -13002,17 +13002,12 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           })
           .where(eq(agentWakeupRequests.id, deferred.id));
 
-        await tx
-          .update(issues)
-          .set({
-            executionRunId: newRun.id,
-            executionAgentNameKey: normalizeAgentNameKey(deferredAgent.name),
-            executionLockedAt: now,
-            updatedAt: now,
-          })
-          // Promoted mention wakes are issue-scoped, not issue ownership transfers.
-          .where(and(eq(issues.id, issue.id), eq(issues.assigneeAgentId, deferredAgent.id)));
-
+        // Fix D (lazy locking for promotion): the promoted run is still queued, so
+        // it does NOT hold the issue execution lock yet. The lock is stamped in
+        // claimQueuedRun() once the run actually starts — identical to Fix A for
+        // the enqueueWakeup path. Stamping it here caused a 409 self-conflict: the
+        // live run (same agent, per-agent concurrency = 1) couldn't PATCH the issue
+        // because the queued promoted run held the lock before claiming the slot.
         return {
           kind: "promoted" as const,
           run: newRun,
