@@ -1,0 +1,16 @@
+# Auspex Agent Evals — master runner for all agent behavior tests
+#
+# Runs 3 separate eval configs for each agent role.
+#
+# Usage:
+#   cd evals/promptfoo && source ~/my2brain/.env
+#
+#   # Run all:
+#   ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY promptfoo eval -c promptfooconfig-content-chief.yaml --no-cache
+#   ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY promptfoo eval -c promptfooconfig-ops-chief.yaml --no-cache
+#   ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY promptfoo eval -c promptfooconfig-secretary.yaml --no-cache
+#
+#   # Or use the shell runner:
+#   bash run-auspex-evals.sh
+#
+#   promptfoo view  # view all results

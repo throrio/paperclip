@@ -1,0 +1,15 @@
+description: "Content-Chief behavior evals"
+
+prompts:
+  - file://prompts/content-chief-system.txt
+
+providers:
+  - id: anthropic:messages:claude-sonnet-4-20250514
+    label: claude-sonnet-4
+
+defaultTest:
+  options:
+    transformVars: "{ ...vars, apiUrl: 'http://localhost:3101', runId: 'run-eval-001' }"
+
+tests:
+  - file://tests/auspex-content.yaml

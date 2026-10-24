@@ -1803,14 +1803,32 @@ export function issueService(db: Db) {
           .then((rows) => rows[0] ?? null);
         if (!preCheckRow?.executionRunId) return;
         const lockRun = await tx
-          .select({ id: heartbeatRuns.id, status: heartbeatRuns.status })
+          .select({ id: heartbeatRuns.id, status: heartbeatRuns.status, updatedAt: heartbeatRuns.updatedAt })
           .from(heartbeatRuns)
           .where(eq(heartbeatRuns.id, preCheckRow.executionRunId))
           .then((rows) => rows[0] ?? null);
-        if (!lockRun || (lockRun.status !== "queued" && lockRun.status !== "running")) {
+        // A queued run hasn't started yet and must not hold the issue lock — doing so
+        // would block the currently-running predecessor with a 409 (AUSA-2004). Only a
+        // "running" run is a valid lock holder; clear everything else as stale.
+        // A "running" run whose updatedAt is more than 10 minutes old is also treated as
+        // stale — the process likely died without updating its status (AUSA-2010).
+        const STALE_RUNNING_THRESHOLD_MS = 10 * 60 * 1000;
+        const isStaleRunning =
+          lockRun?.status === "running" &&
+          lockRun.updatedAt != null &&
+          now.getTime() - new Date(lockRun.updatedAt).getTime() > STALE_RUNNING_THRESHOLD_MS;
+        if (!lockRun || lockRun.status !== "running" || isStaleRunning) {
+          // Clear both executionRunId and checkoutRunId when they point to the same stale run.
+          // checkoutRunId is cleared only when it matches, so a valid concurrent checkout isn't disturbed.
           await tx
             .update(issues)
-            .set({ executionRunId: null, executionAgentNameKey: null, executionLockedAt: null, updatedAt: now })
+            .set({
+              executionRunId: null,
+              executionAgentNameKey: null,
+              executionLockedAt: null,
+              checkoutRunId: sql`CASE WHEN ${issues.checkoutRunId} = ${preCheckRow.executionRunId} THEN NULL ELSE ${issues.checkoutRunId} END`,
+              updatedAt: now,
+            })
             .where(
               and(
                 eq(issues.id, id),
@@ -1938,6 +1956,17 @@ export function issueService(db: Db) {
         checkoutRunId: current.checkoutRunId,
         executionRunId: current.executionRunId,
       });
+    },
+
+    releaseExecutionLock: async (id: string) => {
+      const now = new Date();
+      const updated = await db
+        .update(issues)
+        .set({ executionRunId: null, checkoutRunId: null, executionLockedAt: null, executionAgentNameKey: null, updatedAt: now })
+        .where(eq(issues.id, id))
+        .returning({ id: issues.id })
+        .then((rows) => rows[0] ?? null);
+      return updated;
     },
 
     assertCheckoutOwner: async (id: string, actorAgentId: string, actorRunId: string | null) => {

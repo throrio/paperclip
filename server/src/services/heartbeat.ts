@@ -3121,6 +3121,82 @@ export function heartbeatService(db: Db) {
     return result;
   }
 
+  // heartbeat_runs.status is free-form text; these four are the terminal values the server
+  // actually writes. A lock held by any of them can never be released by its owner.
+  const TERMINAL_RUN_STATUSES = ["succeeded", "failed", "timed_out", "cancelled"];
+  // Must stay >= the checkout path's threshold in issues.ts: checkout resolves a stale lock
+  // transactionally against a real competing claimant, while this sweep is a blunt background
+  // pass and so must be the more conservative of the two.
+  const SWEEP_STALE_RUNNING_AFTER_MS = 15 * 60 * 1000;
+
+  async function sweepStaleExecutionLocks() {
+    const now = new Date();
+
+    // Start from the locked issues — always a handful — rather than from heartbeat_runs,
+    // which grows without bound and would otherwise be selected in full on every sweep.
+    const locked = await db
+      .select({
+        issueId: issues.id,
+        runId: issues.executionRunId,
+        runStatus: heartbeatRuns.status,
+        runUpdatedAt: heartbeatRuns.updatedAt,
+      })
+      .from(issues)
+      .leftJoin(heartbeatRuns, eq(heartbeatRuns.id, issues.executionRunId))
+      .where(
+        and(
+          sql`${issues.executionRunId} IS NOT NULL`,
+          sql`${issues.status} NOT IN ('done', 'cancelled')`,
+        ),
+      );
+
+    // A missing run row is an orphan lock. A "queued" run never owns a lock — claimQueuedRun()
+    // stamps it only on the running transition — so anything still queued is left alone.
+    const stale = locked.filter(({ runStatus, runUpdatedAt }) => {
+      if (runStatus == null) return true;
+      if (TERMINAL_RUN_STATUSES.includes(runStatus)) return true;
+      return (
+        runStatus === "running" &&
+        runUpdatedAt != null &&
+        now.getTime() - new Date(runUpdatedAt).getTime() > SWEEP_STALE_RUNNING_AFTER_MS
+      );
+    });
+
+    if (stale.length === 0) return { cleared: 0, issueIds: [] as string[] };
+
+    // Re-assert the observed lock holder so a lock acquired between the select and the
+    // update is not clobbered. Reset in_progress → todo so reconcileStrandedAssignedIssues
+    // can re-dispatch.
+    const updated = await db
+      .update(issues)
+      .set({
+        executionRunId: null,
+        checkoutRunId: null,
+        executionLockedAt: null,
+        executionAgentNameKey: null,
+        status: sql`CASE WHEN ${issues.status} = 'in_progress' THEN 'todo' ELSE ${issues.status} END`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          inArray(issues.id, stale.map((r) => r.issueId)),
+          inArray(issues.executionRunId as any, stale.map((r) => r.runId as string)),
+        ),
+      )
+      .returning({ id: issues.id });
+
+    const clearedIds = new Set(updated.map((r) => r.id));
+    for (const row of stale) {
+      if (!clearedIds.has(row.issueId)) continue;
+      logger.info(
+        { issueId: row.issueId, staleLockRunId: row.runId, lockRunStatus: row.runStatus ?? "missing" },
+        "watchdog cleared stale execution lock",
+      );
+    }
+
+    return { cleared: updated.length, issueIds: [...clearedIds] };
+  }
+
   async function updateRuntimeState(
     agent: typeof agents.$inferSelect,
     run: typeof heartbeatRuns.$inferSelect,
@@ -4391,15 +4467,11 @@ export function heartbeatService(db: Db) {
           })
           .where(eq(agentWakeupRequests.id, deferred.id));
 
-        await tx
-          .update(issues)
-          .set({
-            executionRunId: newRun.id,
-            executionAgentNameKey: normalizeAgentNameKey(deferredAgent.name),
-            executionLockedAt: now,
-            updatedAt: now,
-          })
-          .where(eq(issues.id, issue.id));
+        // Do NOT stamp executionRunId here — the run is only queued at this point.
+        // A queued run stamped as owner would block a concurrently-running predecessor
+        // with a 409 (AUSA-2004). claimQueuedRun() (Fix A) stamps the lock once the
+        // run actually transitions to "running". The legacyRun scan in enqueueWakeup()
+        // will coalesce any follow-up wakes into this queued run via the context snapshot.
 
         return {
           run: newRun,
@@ -4612,20 +4684,25 @@ export function heartbeatService(db: Db) {
 
           if (legacyRun) {
             activeExecutionRun = legacyRun;
-            const legacyAgent = await tx
-              .select({ name: agents.name })
-              .from(agents)
-              .where(eq(agents.id, legacyRun.agentId))
-              .then((rows) => rows[0] ?? null);
-            await tx
-              .update(issues)
-              .set({
-                executionRunId: legacyRun.id,
-                executionAgentNameKey: normalizeAgentNameKey(legacyAgent?.name),
-                executionLockedAt: new Date(),
-                updatedAt: new Date(),
-              })
-              .where(eq(issues.id, issue.id));
+            // Only stamp the issue lock if the run is actually running.
+            // A queued run hasn't started yet — stamping it as owner would
+            // block the currently-running predecessor with a 409 (AUSA-2004).
+            if (legacyRun.status === "running") {
+              const legacyAgent = await tx
+                .select({ name: agents.name })
+                .from(agents)
+                .where(eq(agents.id, legacyRun.agentId))
+                .then((rows) => rows[0] ?? null);
+              await tx
+                .update(issues)
+                .set({
+                  executionRunId: legacyRun.id,
+                  executionAgentNameKey: normalizeAgentNameKey(legacyAgent?.name),
+                  executionLockedAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(issues.id, issue.id));
+            }
           }
         }
 
@@ -5323,6 +5400,8 @@ export function heartbeatService(db: Db) {
     resumeQueuedRuns,
 
     reconcileStrandedAssignedIssues,
+
+    sweepStaleExecutionLocks,
 
     tickTimers: async (now = new Date()) => {
       const allAgents = await db.select().from(agents);

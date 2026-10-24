@@ -636,6 +636,12 @@ export async function startServer(): Promise<StartedServer> {
             logger.warn({ ...reconciled }, "periodic stranded-issue reconciliation changed assigned issue state");
           }
         })
+        .then(async () => {
+          const swept = await heartbeat.sweepStaleExecutionLocks();
+          if (swept.cleared > 0) {
+            logger.warn({ ...swept }, "watchdog swept stale execution locks");
+          }
+        })
         .catch((err) => {
           logger.error({ err }, "periodic heartbeat recovery failed");
         });

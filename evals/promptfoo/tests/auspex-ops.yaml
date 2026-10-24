@@ -1,0 +1,76 @@
+# Auspex Ops-Chief behavior tests
+# REGRESSION tests — catch when Ops-Chief starts doing work himself
+# or loses understanding of heartbeat mode differences.
+
+- description: "ops.delegates_not_executes - creates issues for sub-agents instead of doing work"
+  vars:
+    agentId: ops-chief
+    companyId: auspex
+    taskId: issue-morning-ops
+    wakeReason: timer
+    approvalId: ""
+    question: "It's morning heartbeat. You need to collect Facebook metrics and generate a daily report. What do you do?"
+  assert:
+    - type: javascript
+      value: "output.includes('Metrics-Collector') || output.includes('Reporter') || output.includes('Audit') || output.includes('sub-agent') || output.includes('делегир')"
+      metric: names_sub_agents
+    - type: javascript
+      value: "output.includes('Issue') || output.includes('issue') || output.includes('задач') || output.includes('POST')"
+      metric: creates_sub_issues
+    - type: javascript
+      value: "!output.match(/I will collect|I will generate|I'll scrape|let me fetch|я соберу метрик|я сгенерирую/i)"
+      metric: does_not_self_execute
+
+- description: "ops.weekly_scope - weekly heartbeat covers metrics + goals + infra"
+  vars:
+    agentId: ops-chief
+    companyId: auspex
+    taskId: issue-weekly-review
+    wakeReason: timer
+    approvalId: ""
+    question: "It's your weekly review heartbeat (Friday). What areas do you cover and what sub-tasks do you create?"
+  assert:
+    - type: javascript
+      value: "output.includes('метрик') || output.includes('metrics') || output.includes('Metrics')"
+      metric: covers_metrics
+    - type: javascript
+      value: "output.includes('цел') || output.includes('goal') || output.includes('прогресс') || output.includes('progress')"
+      metric: covers_goals
+    - type: javascript
+      value: "output.includes('Reporter') || output.includes('отчёт') || output.includes('report') || output.includes('Report:')"
+      metric: delegates_reporting
+
+- description: "ops.monthly_strategy - monthly review has strategic + finance scope"
+  vars:
+    agentId: ops-chief
+    companyId: auspex
+    taskId: issue-monthly-review
+    wakeReason: timer
+    approvalId: ""
+    question: "It's your monthly review heartbeat (1st of month). What does it include beyond weekly scope?"
+  assert:
+    - type: javascript
+      value: "output.match(/финанс|бюджет|finance|стратег|strategy|revenue|budget|cost|ROI|planning|планирован/i) !== null"
+      metric: covers_finance_or_strategy
+    - type: javascript
+      value: "output.includes('план') || output.includes('следующ') || output.includes('next month') || output.includes('next period')"
+      metric: plans_next_period
+
+- description: "ops.run_id_header - includes X-Paperclip-Run-Id on mutations"
+  vars:
+    agentId: ops-chief
+    companyId: auspex
+    taskId: issue-ops-task
+    wakeReason: assignment
+    approvalId: ""
+    question: "Show the API calls to: 1) Checkout your issue 2) Create a sub-issue for Metrics-Collector (UUID: e8bbcaa3-833e-4f2c-91d0-7b0955ba4f9a). Include all required headers."
+  assert:
+    - type: contains
+      value: "X-Paperclip-Run-Id"
+      metric: includes_run_id
+    - type: javascript
+      value: "output.includes('checkout') || output.includes('POST /api/issues')"
+      metric: checkouts_first
+    - type: javascript
+      value: "output.includes('e8bbcaa3') || output.includes('Metrics-Collector')"
+      metric: correct_agent_uuid

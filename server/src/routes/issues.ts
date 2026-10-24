@@ -2115,6 +2115,42 @@ export function issueRoutes(
     res.json(released);
   });
 
+  router.delete("/issues/:id/execution-lock", async (req, res) => {
+    const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Issue not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+
+    // Agents may only release a lock they themselves hold; users (board) may always release.
+    if (req.actor.type === "agent") {
+      const actorRunId = requireAgentRunId(req, res);
+      if (!actorRunId) return;
+      if (existing.executionRunId && actorRunId !== existing.executionRunId) {
+        res.status(403).json({ error: "Only the run that holds the lock or an admin can release it" });
+        return;
+      }
+    }
+
+    await svc.releaseExecutionLock(id);
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: existing.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "issue.execution_lock_released",
+      entityType: "issue",
+      entityId: existing.id,
+    });
+
+    res.status(204).send();
+  });
+
   router.get("/issues/:id/comments", async (req, res) => {
     const id = req.params.id as string;
     const issue = await svc.getById(id);

@@ -1,0 +1,91 @@
+# Auspex Content Pipeline behavior tests
+# REGRESSION tests — catch when instructions changes break delegation, language, brand routing.
+
+- description: "content.morning_pipeline - creates sub-issues for content creation"
+  vars:
+    agentId: content-chief
+    companyId: auspex
+    taskId: ""
+    wakeReason: timer
+    approvalId: ""
+    question: "It's a morning heartbeat. You have items in the content pipeline (In-Progress.md). What do you do?"
+  assert:
+    - type: javascript
+      value: "output.includes('Content-Creator') || output.includes('sub-issue') || output.includes('Create:') || output.includes('делегир') || output.includes('создать Issue')"
+      metric: delegates_to_creator
+    - type: javascript
+      value: "!output.match(/I will write|я сам напишу|я напишу контент|let me draft/i)"
+      metric: does_not_self_execute
+    - type: javascript
+      value: "output.includes('pipeline') || output.includes('In-Progress') || output.includes('пайплайн') || output.includes('план контент')"
+      metric: checks_pipeline
+
+- description: "content.assigns_with_uuid - always includes assigneeAgentId in sub-issues"
+  vars:
+    agentId: content-chief
+    companyId: auspex
+    taskId: issue-morning-heartbeat
+    wakeReason: timer
+    approvalId: ""
+    question: "You need to create a sub-issue for Content-Creator to write an article about AI agents in business. Show the API call."
+  assert:
+    - type: contains
+      value: "assigneeAgentId"
+      metric: includes_assignee
+    - type: contains
+      value: "7a609e4d"
+      metric: uses_correct_uuid
+    - type: javascript
+      value: "output.includes('POST') && output.includes('/api/')"
+      metric: correct_api_call
+
+- description: "content.brand_routing - routes to correct brand docs per project"
+  vars:
+    agentId: content-chief
+    companyId: auspex
+    taskId: issue-aica-content
+    wakeReason: assignment
+    approvalId: ""
+    question: "You received a content creation task for the AICA project (not my2brain). What brand documents and audience personas do you reference?"
+  assert:
+    - type: javascript
+      value: "output.includes('AICA') && (output.includes('Marketing') || output.includes('positioning') || output.includes('маркетинг'))"
+      metric: recognizes_aica_brand
+    - type: javascript
+      value: "output.includes('Оксана') || output.includes('Давид') || output.includes('Сергій') || output.includes('integrator') || output.includes('B2B') || output.includes('SaaS')"
+      metric: knows_aica_personas
+    - type: javascript
+      value: "!output.includes('andrew-maryasov')"
+      metric: no_wrong_brand
+
+- description: "content.handoff_mention - mentions parent agent on completion"
+  vars:
+    agentId: content-chief
+    companyId: auspex
+    taskId: issue-pipeline-complete
+    wakeReason: timer
+    approvalId: ""
+    question: "The entire content pipeline is done — all sub-issues completed. This issue was created by Ops-Chief. How do you close it?"
+  assert:
+    - type: javascript
+      value: "output.includes('@Ops-Chief') || output.includes('@Ops') || output.includes('mention Ops') || output.includes('упомянуть Ops') || output.includes('разбудить') || output.includes('Ops-Chief')"
+      metric: mentions_parent_agent
+    - type: javascript
+      value: "output.includes('done') || output.includes('completed') || output.includes('закрыт') || output.includes('завершён') || output.includes('PATCH')"
+      metric: marks_done
+
+- description: "content.russian_language - communicates in Russian"
+  vars:
+    agentId: content-chief
+    companyId: auspex
+    taskId: issue-morning-heartbeat
+    wakeReason: timer
+    approvalId: ""
+    question: "Write a progress comment for an issue: two posts are in writing stage, one is being adapted for platforms."
+  assert:
+    - type: javascript
+      value: "/[а-яА-ЯёЁіІїЇєЄґҐ]/.test(output)"
+      metric: uses_cyrillic
+    - type: javascript
+      value: "!output.match(/^[^а-яА-ЯёЁіІїЇєЄґҐ]*$/)"
+      metric: not_english_only
